@@ -1,0 +1,141 @@
+<!--
+  sheet2sound — paper sheet music to sound (Audiveris OMR -> MusicXML -> vexml/VexFlow -> Tone.js).
+  Copyright (C) 2026 The sheet2sound contributors
+
+  This program is free software: you can redistribute it and/or modify it under
+  the terms of the GNU General Public License as published by the Free Software
+  Foundation, either version 3 of the License, or (at your option) any later version.
+  See the full license in LICENSE along with this program.
+-->
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>sheet2sound — paper → sound</title>
+    <style>
+      :root { --border: #ddd; }
+      * { box-sizing: border-box; }
+      body { font-family: system-ui, sans-serif; margin: 0; background: #fafafa; }
+      header { padding: 1rem 2rem 0.5rem; border-bottom: 1px solid var(--border); background: #fff; }
+      h1 { font-size: 1.3rem; margin: 0 0 0.2rem; }
+      .sub { color: #555; font-size: 0.9rem; }
+      code { background: #eee; padding: 0.1rem 0.35rem; border-radius: 4px; }
+
+      .upload { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; padding: 0.75rem 2rem; }
+
+      .layout { display: grid; grid-template-columns: minmax(260px, 360px) 1fr; gap: 1rem;
+                padding: 1rem 2rem; align-items: start; }
+      .layout > div { min-width: 0; }
+      @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+
+      .panel { border: 1px solid var(--border); border-radius: 10px; background: #fff; padding: 1rem; }
+      .panel h2 { font-size: 1rem; margin: 0 0 0.6rem; }
+      #original { max-width: 100%; border-radius: 6px; border: 1px solid var(--border); margin-top: 0.5rem; }
+      #origNote { color: #888; font-size: 0.85rem; margin-top: 0.4rem; }
+
+      #score { border: 1px solid var(--border); border-radius: 10px; background: #fff;
+               padding: 0.75rem; min-height: 300px; overflow: auto; }
+      #playback, #verify { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;
+                           margin-top: 0.75rem; }
+      #verify { border-top: 1px dashed #ccc; padding-top: 0.75rem; }
+      .group { display: inline-flex; gap: 0.3rem; align-items: center; border: 1px solid #ccc;
+               border-radius: 8px; padding: 0.25rem 0.45rem; background: #f7f7f7; }
+      .group label { font-size: 0.8rem; color: #555; margin-right: 0.2rem; }
+
+      button { padding: 0.35rem 0.7rem; border-radius: 6px; border: 1px solid #999;
+               background: #fff; cursor: pointer; font-size: 0.9rem; }
+      button:hover:not(:disabled) { background: #f0f0f0; }
+      button:disabled { opacity: 0.45; cursor: not-allowed; }
+      select { padding: 0.3rem; border-radius: 6px; border: 1px solid #999; }
+
+      #inspector { font-size: 0.9rem; margin-top: 0.5rem; }
+      #inspector table { border-collapse: collapse; width: 100%; }
+      #inspector td { padding: 0.2rem 0.4rem; border-bottom: 1px solid #f0f0f0; }
+      #inspector td:first-child { color: #777; width: 6.5em; }
+
+      #log { font-family: ui-monospace, monospace; font-size: 0.8rem; color: #b00;
+             white-space: pre-wrap; margin-top: 0.75rem; }
+      .ok { color: #0a0; }
+      #playStatus { color: #555; font-size: 0.85rem; }
+      a.dl { font-size: 0.85rem; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>sheet2sound — paper → sound, with human verification</h1>
+      <p class="sub">
+        Upload a scan/PDF → <b>Audiveris OMR</b> (patched build) → MusicXML → <b>vexml</b> on <b>VexFlow 5</b>.
+        Click any note to select it; correct pitch/duration; audition + <b>▶ Play</b>; export the fixed score.
+      </p>
+    </header>
+
+    <div class="upload">
+      <input id="file" type="file" accept=".png,.jpg,.jpeg,.pdf,.tif,.tiff,.bmp,.mxl,.musicxml,.xml" />
+      <button id="btnTranscribe">Transcribe &amp; render</button>
+      <button id="btnExport" disabled>⬇ Export fixed .musicxml</button>
+      <span class="sub"><code>.png/.jpg/.pdf</code> → OMR; <code>.mxl/.musicxml</code> bypass OMR.</span>
+    </div>
+
+    <div class="layout">
+      <div class="panel" id="origPanel">
+        <h2>Original (the source of truth)</h2>
+        <img id="original" alt="original scan" hidden />
+        <div id="origNote" class="sub">Demo has no original scan — upload one to compare against the
+          transcribed score.</div>
+      </div>
+
+      <div>
+        <div id="score" aria-label="Rendered score">loading…</div>
+
+        <div id="playback">
+          <button id="btnPlay">▶ Play</button>
+          <button id="btnStop">■ Stop</button>
+          <div class="group">
+            <label for="tempo">Tempo</label>
+            <select id="tempo">
+              <option value="60">60</option><option value="80">80</option>
+              <option value="100">100</option><option value="120" selected>120</option>
+              <option value="140">140</option><option value="160">160</option>
+              <option value="180">180</option>
+            </select>
+          </div>
+          <span id="playStatus" class="sub"></span>
+        </div>
+
+        <div id="verify">
+          <div class="group">
+            <label>Navigate</label>
+            <button id="btnPrev" title="previous note (voice)">◀</button>
+            <button id="btnNext" title="next note (voice)">▶</button>
+            <button id="btnHigher" title="higher pitch in chord">▲</button>
+            <button id="btnLower" title="lower pitch in chord">▼</button>
+          </div>
+          <div class="group">
+            <label>Pitch</label>
+            <button id="btnFlat" title="down a semitone">♭ −1</button>
+            <button id="btnSharp" title="up a semitone">♯ +1</button>
+          </div>
+          <div class="group">
+            <label>Duration</label>
+            <button id="btnHalve" title="halve duration">½</button>
+            <button id="btnDouble" title="double duration">×2</button>
+          </div>
+          <button id="btnAudition" title="play the selected note">◉ Audition</button>
+          <button id="btnUndo" title="undo last pitch edit">Undo</button>
+          <button id="btnRedo" title="redo last pitch edit">Redo</button>
+        </div>
+
+        <div id="inspector" class="panel">
+          <h2>Selected note</h2>
+          <div id="inspectorBody">— none —</div>
+        </div>
+
+        <div id="log"></div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

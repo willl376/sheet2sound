@@ -1,0 +1,10 @@
+# Normalize line endings: check out native, store LF in the repo.
+* text=auto
+
+# Corpus files stay as-is (byte fidelity matters).
+*.xml text eol=lf
+*.musicxml text eol=lf
+*.mxl binary
+*.jpg binary
+*.png binary
+*.pdf binary
