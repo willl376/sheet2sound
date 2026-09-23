@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="4.0">
+  <!-- tempo-seq: exercises per-measure playback tempo segments (vexml TempoMap parity).
+       Six 4/4 measures of whole notes:
+         m1 no mark               -> 120 (default, carries)
+         m2 metronome quarter=60  ->  60
+         m3 metronome half=60     -> 120 (QUARTERS_PER_UNIT: half = 2 quarters)
+         m4 no mark (carries 120) -> 120
+         m5 measure <sound 180/>  -> 180
+         m6 no mark (carries 180) -> 180
+       forward repeat at m2-left / backward at m4-right replays m2..m4,
+       so playback order = m1 m2 m3 m4 m2 m3 m4 m5 m6 (9 occurrences).
+       Segments: [0,4)120 [4,8)60 [8,12)120 [12,16)120 [16,20)60 [20,24)120
+                 [24,28)120 [28,32)180 [32,36)180; totalBeats 36; durationMs 20666.67.
+       (linear-120 would be 36*500 = 18000 — the marks must stretch it.) -->
+  <part-list>
+    <score-part id="P1"><part-name>Tempo</part-name></score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>4</divisions>
+        <key><fifths>0</fifths></key>
+        <time><beats>4</beats><beat-type>4</beat-type></time>
+        <clef><sign>G</sign><line>2</line></clef>
+      </attributes>
+      <note>
+        <pitch><step>C</step><octave>4</octave></pitch>
+        <duration>16</duration>
+        <voice>1</voice>
+        <type>whole</type>
+      </note>
+    </measure>
+    <measure number="2">
+      <barline location="left">
+        <repeat direction="forward"/>
+      </barline>
+      <direction placement="above">
+        <direction-type>
+          <metronome>
+            <beat-unit>quarter</beat-unit>
+            <per-minute>60</per-minute>
+          </metronome>
+        </direction-type>
+        <sound tempo="60"/>
+      </direction>
+      <note>
+        <pitch><step>D</step><octave>4</octave></pitch>
+        <duration>16</duration>
+        <voice>1</voice>
+        <type>whole</type>
+      </note>
+    </measure>
+    <measure number="3">
+      <direction placement="above">
+        <direction-type>
+          <metronome>
+            <beat-unit>half</beat-unit>
+            <per-minute>60</per-minute>
+          </metronome>
+        </direction-type>
+        <sound tempo="60"/>
+      </direction>
+      <note>
+        <pitch><step>E</step><octave>4</octave></pitch>
+        <duration>16</duration>
+        <voice>1</voice>
+        <type>whole</type>
+      </note>
+    </measure>
+    <measure number="4">
+      <note>
+        <pitch><step>F</step><octave>4</octave></pitch>
+        <duration>16</duration>
+        <voice>1</voice>
+        <type>whole</type>
+      </note>
+      <barline location="right">
+        <repeat direction="backward"/>
+      </barline>
+    </measure>
+    <measure number="5">
+      <sound tempo="180"/>
+      <note>
+        <pitch><step>G</step><octave>4</octave></pitch>
+        <duration>16</duration>
+        <voice>1</voice>
+        <type>whole</type>
+      </note>
+    </measure>
+    <measure number="6">
+      <note>
+        <pitch><step>A</step><octave>4</octave></pitch>
+        <duration>16</duration>
+        <voice>1</voice>
+        <type>whole</type>
+      </note>
+    </measure>
+  </part>
+</score-partwise>

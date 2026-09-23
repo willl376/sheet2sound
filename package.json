@@ -15,6 +15,7 @@
     "test:player": "node scripts/test-player.mjs",
     "verify:avalon": "node scripts/verify-avalon.mjs",
     "verify:omr-demo": "node scripts/verify-omr-demo.mjs",
+    "verify:tempo": "node scripts/verify-tempo.mjs",
     "inspect": "node scripts/inspect.mjs"
   },
   "dependencies": {

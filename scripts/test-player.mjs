@@ -108,6 +108,50 @@ if (path.includes('carmen.xml')) {
     `got ${tl.durationMs}`);
 }
 
+// Tempo-seq ground truth: per-measure tempo segments (vexml TempoMap parity). Six 4/4
+// whole-note measures; m2 metronome quarter=60, m3 metronome half=60 (->120 via
+// QUARTERS_PER_UNIT), m4 carries 120, m5 measure <sound tempo=180/>, m6 carries 180.
+// forward repeat m2-left / backward m4-right replays m2..m4: 9 occurrences,
+// segments [0,4)120 [4,8)60 [8,12)120 [12,16)120 [16,20)60 [20,24)120 [24,28)120
+//          [28,32)180 [32,36)180, totalBeats 36, durationMs 20666.67.
+if (path.includes('tempo-seq.xml')) {
+  check('tempo-seq: time sig 4/4', tl.timeSignature?.beats === 4 && tl.timeSignature?.beatType === 4,
+    JSON.stringify(tl.timeSignature));
+  check('tempo-seq: 9 events (9 occurrences x 1 whole note)',
+    tl.events.length === 9 && pitchEvents.length === 9,
+    `${tl.events.length} events / ${pitchEvents.length} pitches`);
+  check('tempo-seq: 9 occurrences expanded', tl.occurrences?.length === 9,
+    `got ${tl.occurrences?.length}`);
+  const occMeasures = (tl.occurrences ?? []).map((o) => o.measure).join(',');
+  check('tempo-seq: occurrence order m1 m2 m3 m4 m2 m3 m4 m5 m6',
+    occMeasures === '1,2,3,4,2,3,4,5,6', `got ${occMeasures}`);
+  check('tempo-seq: startBeats 0,4,8,12,16,20,24,28,32',
+    tl.events.every((e, i) => Math.abs(e.startBeats - i * 4) < 0.001), 'mismatch');
+  check('tempo-seq: totalBeats === 36', Math.abs(tl.totalBeats - 36) < 0.05,
+    `got ${tl.totalBeats}`);
+  check('tempo-seq: durationMs === 20666.67 (folds marks; linear-120 = 18000)',
+    Math.abs(tl.durationMs - 20666.67) < 40, `got ${tl.durationMs}`);
+  check('tempo-seq: tempo (dropdown default) = 120 (first segment)',
+    tl.tempo === 120, `got ${tl.tempo}`);
+  const wantSegs = [[0, 4, 120], [4, 8, 60], [8, 12, 120], [12, 16, 120], [16, 20, 60],
+    [20, 24, 120], [24, 28, 120], [28, 32, 180], [32, 36, 180]];
+  check('tempo-seq: tempoSegments exact', (() => {
+    const segs = (tl.tempoSegments ?? []).map((s) =>
+      [+s.startBeat.toFixed(2), +s.endBeat.toFixed(2), s.bpm]);
+    return JSON.stringify(segs) === JSON.stringify(wantSegs);
+  })(), JSON.stringify((tl.tempoSegments ?? []).map((s) => [+s.startBeat.toFixed(2), +s.endBeat.toFixed(2), s.bpm])));
+  const spots = [[0, 0], [2, 1000], [4, 2000], [8, 6000], [10, 7000], [12, 8000],
+    [20, 14000], [28, 18000], [30, 18666.67], [36, 20666.67]];
+  check('tempo-seq: msAt boundary spot checks', spots.every(([b, ms]) =>
+    Math.abs(tl.msAt(b) - ms) < 1.5), spots.map(([b]) => `${b}->${tl.msAt(b)}`).join(' '));
+  check('tempo-seq: beatsAt inverts msAt', [[1000, 2], [6000, 8], [20666.67, 36]]
+    .every(([ms, b]) => Math.abs(tl.beatsAt(ms) - b) < 0.05), 'mismatch');
+  check('tempo-seq: bpmAt carries + back-jump re-applies', (() => {
+    const probe = [[0, 120], [5, 60], [9, 120], [13, 120], [17, 60], [25, 120], [29, 180], [35, 180]];
+    return probe.every(([b, bpm]) => tl.bpmAt(b) === bpm);
+  })(), [0, 5, 9, 13, 17, 25, 29, 35].map((b) => `${b}->${tl.bpmAt(b)}`).join(' '));
+}
+
 console.log(JSON.stringify({
   ok: failures.length === 0,
   parseMs,

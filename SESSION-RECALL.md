@@ -1,7 +1,8 @@
 # SESSION-RECALL — sheet2sound
 
 Durable memory snapshot for resuming work later. Project status as of the last session
-(**Steps 1–4 all green** + repeat-aware playback + **GPL-3.0 licensed + git-initialized**).
+(**Steps 1–4 all green** + repeat-aware playback + per-measure tempo segments +
+**GPL-3.0 licensed + git-initialized**).
 The OpenCode session itself is saved and anchored to this folder
 (`sheet2sound — OMR→sound pipeline Steps 1–4 … live tempo`).
 
@@ -33,17 +34,28 @@ npm run verify:omr-demo  # loads /?demo=carmen-omr.musicxml (OMR transcription) 
 npm run verify:avalon   # /?demo=avalon.musicxml: 62 written measures across 2 parts (Voice + Piano), 2/2→4/4
                         # across pages, repeat m10↔m60 + voltas EXPANDED to 111 occurrences:
                         # 1141 pitched notes, ~370 beats (~3:05 @ 120) — matches vexml's cursor
+npm run verify:tempo    # /?demo=tempo-seq.xml: per-measure tempo segments (metronome/sound marks,
+                        # back-jump re-apply) fold to 20666.67 ms — EXACT parity with vexml's
+                        # getDurationMs(); cursor locks to m2 inside the 60-QPM section mid-play
 npm run test:player      # parser unit test vs ground truth (accepts a file arg: scores/avalon.musicxml)
+npm run test:player -- scores/tempo-seq.xml  # tempo-segment unit truths (segments/msAt/beatsAt/bpmAt)
 npm run inspect          # structural dump (measures, key signatures)
 ```
 
 ## Key files
 
 - `src/main.js` — everything: render, EditingSession wiring, measure-anchored playback cursor,
-  Tone.Transport playback (live tempo), Tempo dropdown written-tempo default, `window.__*` hooks for tests
-- `src/player.js` — MusicXML → event timeline (`<sound tempo>` honored, else 120 QPM)
+  Tone.Transport playback (live tempo), per-measure tempo-segment scheduling (`timeline.msAt/beatsAt`),
+  Tempo dropdown written-tempo default, `window.__*` hooks for tests
+- `src/player.js` — MusicXML → event timeline + **per-measure tempo segments** (vexml TempoMap port:
+  `<metronome>` beats `<sound tempo>`, back-jump re-applies marks as written)
 - `scripts/verify-*.mjs`, `inspect.mjs`, `test-player.mjs`, `debug-page.mjs`, `debug-upload.mjs`
 - `scores/carmen.xml` (demo) + `scores/carmen-omr.musicxml` (real OMR transcription, load at `/?demo=carmen-omr.musicxml`)
+- `scores/tempo-seq.xml` — tempo-segment fixture (`/?demo=tempo-seq.xml`): six 4/4 whole-note measures,
+  m2 metronome quarter=60 (→60), m3 metronome half=60 (→120 via QUARTERS_PER_UNIT), m4 carries 120,
+  m5 measure-level `<sound tempo="180"/>` (→180), m6 carries; forward m2-left / backward m4-right
+  replays m2..m4 → 9 occurrences, segments [0,4)120 [4,8)60 [8,12)120 [12,16)120 [16,20)60
+  [20,24)120 [24,28)120 [28,32)180 [32,36)180, totalBeats 36, durationMs 20666.67 (linear-120 = 18000)
 - `scores/avalon.musicxml` — multi-page OMR result: four Audiveris page exports merged
   (`/?demo=avalon.musicxml`); 62 written measures (27 verse 2/2 + 35 chorus 4/4), Voice + Piano parts kept
   separate, G major; repeat m10↔m60 + voltas → ~370 beats (~3:05 @ 120) expanded playback
@@ -73,11 +85,19 @@ npm run inspect          # structural dump (measures, key signatures)
     local tick position, chords share the previous start, ties extend per (measure, occ, part,
     voice) lane. Each measure lasts max(content, written meter) → carmen = 60 beats / 30 s @ 120 ✓
     (that's the repeat-EXPANDED length: 30 occurrences × 2 beats; see gotcha 16).
-2. **Live tempo = Tone.Transport.** Notes are scheduled ONCE at musical position (`startBeats * 0.5` s,
-   timeline placed at 120 QPM, `REF_SEC_PER_BEAT = 0.5`). Changing `Tone.Transport.bpm.value` rescales
-   wall-clock from the current moment (MuseScore-style) — no Stop+Play, no re-schedule.
-   End-of-piece = a `Transport.schedule` marker → `finishPlayback()`. Stop/cancel = `Transport.stop()`+`cancel()`.
-3. **Cursor beats = `Tone.Transport.ticks / Tone.Transport.PPQ`** (tempo-independent musical beats).
+2. **Live tempo = Tone.Transport.** Notes are scheduled ONCE at their written-tempo position
+   (`timeline.msAt(startBeats)/1000` seconds — a bare schedule number = seconds, converted to ticks
+   at schedule-time bpm, so wall time = that seconds value; see gotcha 17). Changing
+   `Tone.Transport.bpm.value` rescales wall-clock from the current moment (MuseScore-style) — no
+   Stop+Play, no re-schedule. The dropdown default snaps to the opening bpm of the written tempo map
+   (`timeline.tempo`; `syncTempoDropdown`). End-of-piece = a `Transport.schedule` marker at
+   `msAt(totalBeats)/1000 + 0.25` → `finishPlayback()`. Stop/cancel = `Transport.stop()`+`cancel()`.
+2b. **Note duration is also tempo-aware** — each sounding note lasts `durBeats·(60/bpmAt(start))·0.95`
+   seconds (the bpm in force where it starts), so a slow section's notes ring longer; the global
+   dropdown override still scales placement via the transport bpm.
+3. **Cursor beats invert the tempo map**: `beats = timeline.beatsAt((ticks/PPQ)·(60000/scheduleQpm))`
+   with `scheduleQpm` captured at play() (see gotcha 17). At a uniform 120 this reduces exactly to
+   `ticks/PPQ`; with tempo marks it keeps bar + halos on the notes being heard in slowed sections.
 4. **Playback state machine**: tests assert state (`playing`→`idle`), sampler presence, cursor/halos —
    NOT audio (sandbox can't hear). Audio needs a real browser + click gesture + CDN SoundFont.
 5. **Playwright quirk**: `waitForFunction(fn, arg, options)` — options is the 3rd positional arg.
@@ -156,6 +176,23 @@ npm run inspect          # structural dump (measures, key signatures)
     (OMR never captured the printed D.S. text), so only repeat-bar + volta expansion is exercised —
     jump-marker machinery is deferred (matches vexml, which only handles
     repeatstart/repeatend/repeatending).
+17. **Per-measure tempo segments (vexml TempoMap port)** — vexml builds one tempo segment per
+    expanded measure occurrence and folds beats→ms over them (`msAt`), starting at 120
+    (`DEFAULT_TEMPO_BPM`); a measure's mark sets the rate from there on (back-jumps re-apply marks
+    as written), null carries. `playbackTempoOf` prefers a `<metronome>` (bpm = `<per-minute>` ??
+    that direction's `<sound tempo>` ?? 120, × `QUARTERS_PER_UNIT[<beat-unit>]` — whole 4 … 128th
+    0.03125) over a plain `<sound tempo>` (already quarter BPM). `src/player.js` now produces
+    `tempoSegments`/`msAt`/`beatsAt`/`bpmAt`/`durationMs` as exact ports; `timeline.tempo` = FIRST
+    segment's bpm (dropdown default). Scheduling in `src/main.js`: a bare number in
+    `Tone.Transport.schedule(cb, n)` = **seconds** (converted to ticks at schedule-time bpm, so the
+    wall time equals that seconds value), hence events go to `timeline.msAt(startBeats)/1000`, the
+    end marker to `msAt(totalBeats)/1000 + 0.25`, and note duration uses the bpm **in force where
+    the note starts** (`bpmAt`). Cursor follow must invert ticks through the map:
+    `beatsAt((ticks/PPQ)·(60000/scheduleQpm))` with scheduleQpm captured at play time — the naive
+    `ticks/PPQ` read races ahead in slowed sections (verify-tempo proves it: cursor stays on m2
+    inside the 60-QPM section). `verify:tempo` asserts EXACT parity with vexml's own
+    `getSequence().getDurationMs()` (20666.67 ms — both maps fold identically). Zero regression on
+    carmen/avalon (no marks → msAt = beats·500). Test file: `scores/tempo-seq.xml`.
 
 ## Environment facts (paths, tools)
 
@@ -198,7 +235,12 @@ npm run inspect          # structural dump (measures, key signatures)
    (LICENSE + README made for-audience clear), all source/scripts carry the standard GPL header
    comment, `dist/` ignored, `verify:omr-demo` wired into package.json; repo initialized
    (commit `76cfde7`), 40 files tracked, clean tree. Not yet pushed anywhere; no remote set.
-3. ⏳ Multi-engine OMR voting (Clarity-OMR as second opinion) + concurrency safety.
-4. ⏳ Persistence (store uploads/exports) + **offline SoundFont packing** (currently CDN-streamed).
-5. ⏳ Mid-piece tempo changes: our player reads ONE tempo (first `<sound tempo>`); vexml supports
-   per-measure tempo segments. No test file has tempo marks yet, so deferred (would need a fixture).
+3. ✅ **Per-measure tempo segments** — `src/player.js` ports vexml's TempoMap (`tempoSegments` +
+    `msAt`/`beatsAt`/`bpmAt`, `QUARTERS_PER_UNIT`, `playbackTempoOf` precedence: `<metronome>` wins
+    over `<sound tempo>`, else 120); `src/main.js` schedules at `timeline.msAt(beats)/1000` and the
+    cursor inverts ticks through `beatsAt`. Fixture `scores/tempo-seq.xml` exercises metronome
+    beat-units (quarter→60, half→120), measure-level `<sound>`, and a repeat whose back-jump
+    re-applies marks — `test:player` (unit) + `verify:tempo` (E2E, EXACT vexml duration parity)
+    green; carmen/avalon byte-identical (no marks). `git` commit made; tree clean.
+4. ⏳ Multi-engine OMR voting (Clarity-OMR as second opinion) + concurrency safety.
+5. ⏳ Persistence (store uploads/exports) + **offline SoundFont packing** (currently CDN-streamed).

@@ -323,6 +323,80 @@ function toNumber (el, tag) {
   return t == null ? null : Number(t);
 }
 
+// MusicXML <beat-unit> name -> quarter notes, so a metronome mark normalizes to quarter BPM.
+// Mirrors vexml's QUARTERS_PER_UNIT (sequence-factory.ts).
+const QUARTERS_PER_UNIT = {
+  whole: 4, half: 2, quarter: 1, eighth: 0.5,
+  '16th': 0.25, '32nd': 0.125, '64th': 0.0625, '128th': 0.03125,
+};
+
+/* A measure's PLAYBACK tempo in quarter-note beats per minute, or null when it carries no
+ * mark (the tempo already in force carries forward). Mirrors vexml's playbackTempoOf +
+ * quarterBpm: a visible <metronome> with a <beat-unit> wins (bpm from <per-minute>, falling
+ * back to that direction's <sound tempo>, then 120), normalized by the beat-unit; otherwise
+ * the first <sound tempo> in the measure — MusicXML's tempo is already quarter-note BPM. */
+function tempoBpmOfMeasure (measure) {
+  for (const dir of measure.querySelectorAll(':scope > direction')) {
+    const metronome = dir.querySelector(':scope > direction-type > metronome');
+    if (!metronome) continue;
+    const beatUnit = metronome.querySelector(':scope > beat-unit');
+    if (!beatUnit) continue;
+    const perMinute = Number(metronome.querySelector(':scope > per-minute')?.textContent?.trim());
+    const soundTempo = Number(dir.querySelector(':scope > sound')?.getAttribute('tempo'));
+    const bpm = perMinute || soundTempo || 120;
+    return bpm * (QUARTERS_PER_UNIT[beatUnit.textContent.trim()] ?? 1);
+  }
+  for (const sound of [
+    ...measure.querySelectorAll(':scope > sound'),
+    ...measure.querySelectorAll(':scope > direction > sound'),
+  ]) {
+    const t = Number(sound.getAttribute('tempo'));
+    if (t > 0) return t;
+  }
+  return null;
+}
+
+/* Port of vexml's TempoMap.msAt: quarter-note beats -> milliseconds by folding every
+ * segment the beat spans, plus the partial it lands in. A beat past the last segment
+ * extrapolates at the last segment's rate. */
+function tempoMsAt (segments, beats) {
+  const last = segments.at(-1);
+  if (!last) return (beats / 120) * 60000;
+  let ms = 0;
+  for (const seg of segments) {
+    if (beats <= seg.startBeat) break;
+    const upto = Math.min(beats, seg.endBeat);
+    ms += ((upto - seg.startBeat) / seg.bpm) * 60000;
+  }
+  if (beats > last.endBeat) {
+    ms += ((beats - last.endBeat) / last.bpm) * 60000;
+  }
+  return ms;
+}
+
+/* Port of vexml's TempoMap.beatsAt: the monotonic inverse of tempoMsAt. */
+function tempoBeatsAt (segments, ms) {
+  const last = segments.at(-1);
+  if (!last) return (ms / 60000) * 120;
+  let elapsed = 0;
+  for (const seg of segments) {
+    const segMs = ((seg.endBeat - seg.startBeat) / seg.bpm) * 60000;
+    if (ms <= elapsed + segMs) {
+      return seg.startBeat + ((ms - elapsed) / 60000) * seg.bpm;
+    }
+    elapsed += segMs;
+  }
+  return last.endBeat + ((ms - elapsed) / 60000) * last.bpm;
+}
+
+/* The bpm in force at a beat position (segments are disjoint and ordered). */
+function tempoBpmAt (segments, beats) {
+  for (const seg of segments) {
+    if (beats >= seg.startBeat && beats < seg.endBeat) return seg.bpm;
+  }
+  return segments.at(-1)?.bpm ?? 120;
+}
+
 export function parseMusicXML (xmlString, { DOMParser: Parser = globalThis.DOMParser } = {}) {
   const doc = new Parser().parseFromString(xmlString, 'application/xml');
   const root = doc.documentElement;
@@ -343,17 +417,6 @@ export function parseMusicXML (xmlString, { DOMParser: Parser = globalThis.DOMPa
   // Metre-aware parsing: divisions and time signature may change mid-score (each page of a
   // multi-page merge re-declares them). Keep the first for metadata, track the current one
   // while walking measures, and only use per-measure declarations for actual timing.
-
-  // Tempo: <sound tempo="qpm"> in any measure's <direction>, else 120.
-  let tempo = null;
-  for (const sound of root.querySelectorAll('direction > sound')) {
-    const t = Number(sound.getAttribute('tempo'));
-    if (t > 0) { tempo = t; break; }
-  }
-  if (tempo == null) {
-    const alt = root.querySelector('sound')?.getAttribute('tempo');
-    tempo = alt != null && Number(alt) > 0 ? Number(alt) : 120;
-  }
 
   const events = [];
   let measureStartBeats = 0; // absolute beat position of the current measure's start
@@ -394,6 +457,13 @@ export function parseMusicXML (xmlString, { DOMParser: Parser = globalThis.DOMPa
   // lane: repeat bars and voltas apply across the system, so the structure is read there,
   // matching vexml). With no repeat structure this collapses to document order.
   const firstMeasures = perPartMeasures[0] ?? [];
+  // Playback tempo map, per measure number, from the FIRST part (the system-authoritative
+  // lane, matching vexml). A measure's mark sets the quarter-BPM from there on; null carries
+  // the previous rate; a back-jump re-applies each measure's mark as written.
+  const tempoBpmByNo = new Map(); // measure number -> quarter-BPM mark or null
+  for (const measure of firstMeasures) {
+    tempoBpmByNo.set(measure.getAttribute('number') || '', tempoBpmOfMeasure(measure));
+  }
   let orderNumbers;
   let firstIndexByNumber = new Map(); // measure number -> first part's measure index
   if (firstMeasures.length === 0) {
@@ -410,6 +480,8 @@ export function parseMusicXML (xmlString, { DOMParser: Parser = globalThis.DOMPa
   }
 
   const occurrences = []; // per-occurrence start beats, in playback order (for the cursor map)
+  const tempoSegments = []; // per-occurrence rate segments { startBeat, endBeat, bpm } (vexml TempoMap)
+  let carried = 120; // quarter-BPM carried across occurrences; a measure's mark sets it from there on
 
   for (const measureNo of orderNumbers) {
     const occ = occurrences.length;
@@ -514,24 +586,32 @@ export function parseMusicXML (xmlString, { DOMParser: Parser = globalThis.DOMPa
     // or the written meter — so short/empty measures still leave a correct, metre-aligned
     // grid. Both are in signature-beat-pacing units (content and written share `writtenScale`).
     const spanBeats = Math.max(measureQmax, writtenQ * writtenScale);
+    const mark = tempoBpmByNo.get(measureNo);
+    if (mark != null && mark > 0) carried = mark;
+    const startBeats = measureStartBeats;
     occurrences.push({
       index: firstIndexByNumber.get(measureNo) ?? measureNumbers.indexOf(measureNo),
       measure: measureNo,
-      startBeats: measureStartBeats,
+      startBeats,
       spanBeats,
     });
+    tempoSegments.push({ startBeat: startBeats, endBeat: startBeats + spanBeats, bpm: carried });
     measureStartBeats += spanBeats;
   }
 
   const totalBeats = events.reduce((m, e) => Math.max(m, e.startBeats + e.durBeats), 0);
   return {
-    tempo,
+    tempo: tempoSegments[0]?.bpm ?? 120, // dropdown default: the rate in force at the start
+    tempoSegments,
+    msAt: (beats) => tempoMsAt(tempoSegments, beats),
+    beatsAt: (ms) => tempoBeatsAt(tempoSegments, ms),
+    bpmAt: (beats) => tempoBpmAt(tempoSegments, beats),
     divisions,
     timeSignature,
     events,
     occurrences,
     totalBeats,
-    durationMs: (totalBeats * 60 / tempo) * 1000,
+    durationMs: tempoMsAt(tempoSegments, totalBeats),
   };
 }
 

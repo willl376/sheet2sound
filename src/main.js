@@ -63,9 +63,13 @@ const player = {
 window.__player = player;
 window.__editCount = 0;    // incremented on every applied edit (for tests)
 
-// Transport timeline is placed at 120 qpm (0.5 s per quarter); changing Transport.bpm rescales
-// wall-clock playback live. Cursor beats come from ticks/PPQ so they stay musical at any tempo.
-const REF_SEC_PER_BEAT = 0.5; // 60 / 120 — timeline placement reference
+// Events are placed at the score's WRITTEN tempo map (timeline.msAt: beats -> ms, folding
+// per-measure <sound tempo>/<metronome> marks like vexml's TempoMap). Tone.Transport treats a
+// bare schedule number as seconds, converted to ticks at the schedule-time bpm; changing
+// Transport.bpm later rescales wall-clock playback of the remaining ticks live — MuseScore-style
+// global tempo changes with no Stop+Play. Cursor beats stay musical (ticks/PPQ inversion) at any
+// bpm, so bar + halos keep lighting exactly the notes being heard.
+const scheduleQpm = { value: 120 }; // bpm in force when play() scheduled the ticks
 window.__Tone = Tone;
 window.__transportBpm = () => Tone.Transport.bpm.value;
 
@@ -446,25 +450,30 @@ async function play () {
   const sampler = await ensureSampler();
 
   const qpm = selectedTempo();
-  // Schedule once at MUSICAL position (timeline placed at 120 qpm). Changing Transport.bpm later
-  // rescales wall-clock playback from the current moment — live tempo changes, no Stop+Play.
+  // Place every event at its WRITTEN-tempo position (timeline.msAt folds per-measure tempo
+  // marks like vexml's TempoMap), then run the transport at the user's global bpm — a bare
+  // number schedules in seconds, so msAt(beats)/1000 is the drop-in placement formula, and
+  // changing Transport.bpm later rescales wall-clock from the current moment (live overrides).
   Tone.Transport.stop();
   Tone.Transport.cancel();
   Tone.Transport.bpm.value = qpm;
+  scheduleQpm.value = qpm; // cursor inverts ticks -> our beats via this fixed schedule bpm
 
   let scheduled = 0;
   try {
     for (const e of player.timeline.events) {
       if (e.midi == null || e.rest) continue;
       const note = Tone.Frequency(e.midi, 'midi').toNote();
-      const dur = Math.max(e.durBeats * (60 / qpm) * 0.95, 0.05);
+      // Sound a note for its written beats at the tempo in force where it starts, so a slow
+      // (60-qpm) section's notes ring longer; the user dropdown bpm above still scales placement.
+      const dur = Math.max(e.durBeats * (60 / player.timeline.bpmAt(e.startBeats)) * 0.95, 0.05);
       Tone.Transport.schedule((time) => {
         try { sampler.triggerAttackRelease(note, dur, time, undefined, e.velocity); } catch { /* noop */ }
-      }, e.startBeats * REF_SEC_PER_BEAT);
+      }, player.timeline.msAt(e.startBeats) / 1000);
       scheduled++;
     }
     // End-of-piece marker (cleared by stopPlayback/next play via Transport.cancel()).
-    Tone.Transport.schedule(() => finishPlayback(), player.timeline.totalBeats * REF_SEC_PER_BEAT + 0.25);
+    Tone.Transport.schedule(() => finishPlayback(), player.timeline.msAt(player.timeline.totalBeats) / 1000 + 0.25);
     Tone.Transport.start();
   } catch (err) {
     // SoundFont samples may not have downloaded (e.g. sandboxed/offline env).
@@ -487,13 +496,16 @@ function finishPlayback () {
   statusEl.textContent = 'done';
 }
 
-// Drive the cursor from the transport clock every frame: musical quarter-beats = ticks/PPQ
-// (tempo-independent — live bpm changes keep bar + halos on exactly the notes being heard).
+// Drive the cursor from the transport clock every frame. Events sit at ticks derived from the
+// written tempo map (msAt), so invert ticks back to OUR beat axis via timeline.beatsAt using the
+// bpm that was in force when play() scheduled — stable under live bpm overrides, which only
+// rescale the tick clock's wall rate, never the tick positions themselves.
 function startCursorFollow () {
   cancelAnimationFrame(cursorRaf);
   const tick = () => {
     if (player.state !== 'playing' || !cursor) return;
-    const beats = Math.max(0, Tone.Transport.ticks / Tone.Transport.PPQ);
+    const ticksPerBeat = Tone.Transport.ticks / Tone.Transport.PPQ;
+    const beats = player.timeline.beatsAt(ticksPerBeat * (60000 / scheduleQpm.value));
     cursor.seekMs(cursorMsAt(Math.min(beats, player.timeline.totalBeats)));
     cursorRaf = requestAnimationFrame(tick);
   };
