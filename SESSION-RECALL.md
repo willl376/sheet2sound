@@ -37,6 +37,11 @@ npm run verify:avalon   # /?demo=avalon.musicxml: 62 written measures across 2 p
 npm run verify:provenance # printed page → per-page mxl → merged → timeline conservation audit
                         # (pitch multiset/notes/dynamics/meter); proved 675 written pitches == union,
                         # and catches drops like the chorus-vocal fold loss
+npm run render:audio    # bounce the app's ACTUAL playback (same sampler + scheduling) to a WAV:
+                        # artifacts/avalon-sheet2sound.wav (3:07, 33 MB, stereo 44.1k) — listen!
+npm run verify:wav-notes # FFT frequency-content proof on the rendered WAV: sample printed notes
+                        # across the piece and require each note's frequency be present in the
+                        # audio at its onset (93%+ match expected; 56/60 for Avalon)
 npm run verify:tempo    # /?demo=tempo-seq.xml: per-measure tempo segments (metronome/sound marks,
                         # back-jump re-apply) fold to 20666.67 ms — EXACT parity with vexml's
                         # getDurationMs(); cursor locks to m2 inside the 60-QPM section mid-play
@@ -277,5 +282,12 @@ npm run inspect          # structural dump (measures, key signatures)
    https://www.youtube.com/watch?v=zmaKpp51uzI (Al Jolson – Avalon, 1920). All 9 suites green,
    incl. `verify:avalon` E2E "playing 1187 notes". New scratch diag scripts:
    `diag-page-alignment/compare-merges/legacy-utils/fold-trace/note-shapes/dyn-per-part.mjs`.
+   Audio reference produced: `scripts/render-audio.mjs` (Tone.Offline bounce of the real
+   playback — same Sampler/SoundFont + exact play() scheduling formula) → `artifacts/avalon-sheet2sound.wav`
+   (187.23s, 33 MB, stereo 44.1 kHz; all 1187 pitched events scheduled, zero dropped, no sample
+   decode failures, 8/8 segments audible, peak 0.21 no clipping). `scripts/verify-wav-notes.mjs`
+   proves the sound's frequencies match the printed notes: FFT at onsets of sampled events,
+   56/60 (93.3%) exact-frequency hits incl. the opening melody (r 0.79–1.0); the 4 misses are
+   quiet mid-range notes buried under accompaniment, still present at r 0.07–0.14 bins.
 5. ⏳ Multi-engine OMR voting (Clarity-OMR as second opinion) + concurrency safety.
 6. ⏳ Persistence (store uploads/exports) + **offline SoundFont packing** (currently CDN-streamed).
