@@ -240,6 +240,16 @@ npm run inspect          # structural dump (measures, key signatures)
    `C:\Program Files\GitHub CLI\gh.exe`; call via full path or a fresh shell — PATH not refreshed
    in old shells), logged in as `willl376` via device flow; git protocol = https (GCM).
    NOTE: the earlier Windows Credential Manager GitHub token was stale (401) — use `gh`, not it.
+3. ✅ **External-drive backup (D:\sheet2sound-backup, 3.7 TB NTFS)** — mirror of the repo for
+   robustness against GitHub's credentialing/2FA shutdowns. Contents: `sheet2sound.git` (bare
+   mirror, pushable/cloneable), `worktree\sheet2sound` (working clone, runnable via
+   `npm install && npm run dev`), `sheet2sound.bundle` (single-file snapshot), and
+   `README-BACKUP.md` (detailed explanation + instructions: verify with `git fsck`, keep fresh
+   with `git push backup --mirror`, rebuild GitHub from the drive with a mirror clone). The main
+   repo has a registered `backup` remote → `D:\sheet2sound-backup\sheet2sound.git` (verified
+   `git push backup --mirror` = Everything up-to-date; `fsck` clean; all 4 commits present).
+   Also record user's GitHub concern: account credentialing step "tried without success" — the
+   local repo + drive are the offline safety net; see README-BACKUP.md §7 for re-auth steps.
 3. ✅ **Per-measure tempo segments** — `src/player.js` ports vexml's TempoMap (`tempoSegments` +
     `msAt`/`beatsAt`/`bpmAt`, `QUARTERS_PER_UNIT`, `playbackTempoOf` precedence: `<metronome>` wins
     over `<sound tempo>`, else 120); `src/main.js` schedules at `timeline.msAt(beats)/1000` and the
