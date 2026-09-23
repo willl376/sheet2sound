@@ -1,9 +1,9 @@
 # SESSION-RECALL — sheet2sound
 
 Durable memory snapshot for resuming work later. Project status as of the last session
-(**Steps 1–4 all green** + a full **multi-page book → OMR → merge → play** pipeline proven on
-"Avalon", with per-page meter/divisions parsing). The OpenCode session itself is saved and
-anchored to this folder (`sheet2sound — OMR→sound pipeline Steps 1–4 … live tempo`).
+(**Steps 1–4 all green** + repeat-aware playback + **GPL-3.0 licensed + git-initialized**).
+The OpenCode session itself is saved and anchored to this folder
+(`sheet2sound — OMR→sound pipeline Steps 1–4 … live tempo`).
 
 ## What this project is
 
@@ -194,6 +194,11 @@ npm run inspect          # structural dump (measures, key signatures)
    occurrences with vexml's step runs (parity asserted in `verify:playback`). D.S./D.C./coda markers
    are NOT in the OMR XML (source of the crossover: `C:\Users\Wilbur\MuseScore3-src\libmscore\repeatlist.cpp`),
    so jump-marker machinery is deferred until a file has them.
-2. ⏳ Multi-engine OMR voting (Clarity-OMR as second opinion) + concurrency safety.
-3. ⏳ Persistence (store uploads/exports) + **offline SoundFont packing** (currently CDN-streamed).
-4. Maybe: `npm run verify:omr-demo` into package.json (script exists as a file).
+2. ✅ **MIT/BSD provenance + GPL-3.0 licensing + git init** — project is now `GPL-3.0-or-later`
+   (LICENSE + README made for-audience clear), all source/scripts carry the standard GPL header
+   comment, `dist/` ignored, `verify:omr-demo` wired into package.json; repo initialized
+   (commit `76cfde7`), 40 files tracked, clean tree. Not yet pushed anywhere; no remote set.
+3. ⏳ Multi-engine OMR voting (Clarity-OMR as second opinion) + concurrency safety.
+4. ⏳ Persistence (store uploads/exports) + **offline SoundFont packing** (currently CDN-streamed).
+5. ⏳ Mid-piece tempo changes: our player reads ONE tempo (first `<sound tempo>`); vexml supports
+   per-measure tempo segments. No test file has tempo marks yet, so deferred (would need a fixture).
