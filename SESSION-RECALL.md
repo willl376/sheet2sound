@@ -2,7 +2,7 @@
 
 Durable memory snapshot for resuming work later. Project status as of the last session
 (**Steps 1–4 all green** + repeat-aware playback + per-measure tempo segments +
-**GPL-3.0 licensed + git-initialized**).
+**GPL-3.0 licensed + git-initialized + published to GitHub**).
 The OpenCode session itself is saved and anchored to this folder
 (`sheet2sound — OMR→sound pipeline Steps 1–4 … live tempo`).
 
@@ -231,10 +231,15 @@ npm run inspect          # structural dump (measures, key signatures)
    occurrences with vexml's step runs (parity asserted in `verify:playback`). D.S./D.C./coda markers
    are NOT in the OMR XML (source of the crossover: `C:\Users\Wilbur\MuseScore3-src\libmscore\repeatlist.cpp`),
    so jump-marker machinery is deferred until a file has them.
-2. ✅ **MIT/BSD provenance + GPL-3.0 licensing + git init** — project is now `GPL-3.0-or-later`
+2. ✅ **MIT/BSD provenance + GPL-3.0 licensing + git init + published** — project is now `GPL-3.0-or-later`
    (LICENSE + README made for-audience clear), all source/scripts carry the standard GPL header
    comment, `dist/` ignored, `verify:omr-demo` wired into package.json; repo initialized
-   (commit `76cfde7`), 40 files tracked, clean tree. Not yet pushed anywhere; no remote set.
+   (commit `76cfde7`), 40 files tracked, clean tree. **Published to GitHub** (Sep 23 2026):
+   origin = `https://github.com/willl376/sheet2sound.git`, public, default branch `master`,
+   root commit pushed `08be8a5`. Auth = GitHub CLI 2.101.0 (installed via winget to
+   `C:\Program Files\GitHub CLI\gh.exe`; call via full path or a fresh shell — PATH not refreshed
+   in old shells), logged in as `willl376` via device flow; git protocol = https (GCM).
+   NOTE: the earlier Windows Credential Manager GitHub token was stale (401) — use `gh`, not it.
 3. ✅ **Per-measure tempo segments** — `src/player.js` ports vexml's TempoMap (`tempoSegments` +
     `msAt`/`beatsAt`/`bpmAt`, `QUARTERS_PER_UNIT`, `playbackTempoOf` precedence: `<metronome>` wins
     over `<sound tempo>`, else 120); `src/main.js` schedules at `timeline.msAt(beats)/1000` and the
