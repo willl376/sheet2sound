@@ -18,7 +18,7 @@
 // /?demo=avalon.musicxml must render, parse to a sane timeline (2/2 -> 4/4 across pages),
 // and schedule playback without audio-desync: Play schedules, cursor advances, halos light,
 // Stop resets. Counts are Avalon-specific (62 written measures, expanded by the m10↔m60
-// repeat + voltas to 111 measure occurrences / 1378 events / ~370 beats @ 120,
+// repeat + voltas to 111 measure occurrences / 1430 events / ~370 beats @ 120,
 // cut-time paced, ~3:05).
 // 62 measures = 27 verse (2/2) + 35 chorus (4/4) across four OMR pages, Voice + Piano parts
 // kept separate by scripts/merge-sheets.mjs.
@@ -93,8 +93,8 @@ const afterStop = await page.evaluate(() => ({
 
 const failures = [];
 if (!parsed.ok) failures.push('timeline parse failed: ' + parsed.error);
-if (parsed.events !== 1378) failures.push(`expected 1378 events, got ${parsed.events}`);
-if (parsed.pitchCount !== 1141) failures.push(`expected 1141 pitch events, got ${parsed.pitchCount}`);
+if (parsed.events !== 1430) failures.push(`expected 1430 events, got ${parsed.events}`);
+if (parsed.pitchCount !== 1187) failures.push(`expected 1187 pitch events, got ${parsed.pitchCount}`);
 if (parsed.timeSignature?.beats !== 2 || parsed.timeSignature?.beatType !== 2) {
   failures.push(`verse time signature should be 2/2, got ${JSON.stringify(parsed.timeSignature)}`);
 }

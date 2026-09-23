@@ -54,7 +54,10 @@ function readXmlFromMxl (path) {
 }
 
 const MEASURE_RE = /<measure\b[\s\S]*?<\/measure>/g;
-const NOTE_RE = /<note>[\s\S]*?<\/note>/g;
+// Bare `<note>` misses attributed notes (`<note default-x="...">`), which Audiveris emits for
+// pitched music — page 23's second Voice (chorus melody) was silently dropped without ever
+// matching. Keep the word boundary so `<note` inside <notehead>/<notetype> never matches.
+const NOTE_RE = /<note\b[^>]*>[\s\S]*?<\/note>/g;
 
 // Split a sheet's XML into <part id="..."> blocks (a part ends at <part id= or </score-partwise>).
 function partBlocks (xml) {
@@ -156,6 +159,7 @@ mxlPaths.forEach((path) => {
       const targetBlock = collected.Voice[collected.Voice.length - 1];
       // Align measure-by-measure with the page's primary Voice measures.
       const primary = collected.Voice[collected.Voice.length - 1].measures;
+      const DIRECTION_RE = /<direction\b[^>]*>[\s\S]*?<\/direction>|<harmony\b[^>]*>[\s\S]*?<\/harmony>/g;
       measures.forEach((extraFrag, i) => {
         const targetFrag = primary[i];
         if (!targetFrag) return;
@@ -165,14 +169,17 @@ mxlPaths.forEach((path) => {
         while (used.has(String(laneNo))) laneNo += 1;
         const notes = [...extraFrag.matchAll(NOTE_RE)].map((m) => m[0])
           .map((n) => n.replace(/<voice>\d+<\/voice>/, `<voice>${laneNo}</voice>`));
-        if (!notes.length) return;
+        // A folded voice may also carry expressions (dynamics/words/harmony) on its staff:
+        // keep them so the merged score preserves every element of the printed part.
+        const directions = [...extraFrag.matchAll(DIRECTION_RE)].map((m) => m[0]);
+        if (!notes.length && !directions.length) return;
         // Backup to the measure start so the added voice overlaps the primary, not follows it.
-        const p1Ticks = [...targetFrag.matchAll(/<note>[\s\S]*?<\/note>/g)]
+        const p1Ticks = [...targetFrag.matchAll(NOTE_RE)]
           .map((m) => (/<chord\s*\/?\s*>/.test(m[0]) ? 0 : Number(/<duration>(\d+)<\/duration>/.exec(m[0])?.[1] || 0)))
           .reduce((a, b) => a + b, 0);
         const backup = `<backup><duration>${p1Ticks}</duration></backup>`;
-        primary[i] = targetFrag.replace(/<\/measure>/, backup + notes.join('') + '</measure>');
-        folds.push({ page: path.split(/[\\/]/).pop(), atMeasure: i + 1, laneNo, notes: notes.length });
+        primary[i] = targetFrag.replace(/<\/measure>/, backup + notes.join('') + directions.join('') + '</measure>');
+        folds.push({ page: path.split(/[\\/]/).pop(), atMeasure: i + 1, laneNo, notes: notes.length, directions: directions.length });
       });
     }
   }

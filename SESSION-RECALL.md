@@ -33,7 +33,10 @@ npm run verify:edit      # Step 4: select note → ♯+1 → undo → halve → 
 npm run verify:omr-demo  # loads /?demo=carmen-omr.musicxml (OMR transcription) and renders
 npm run verify:avalon   # /?demo=avalon.musicxml: 62 written measures across 2 parts (Voice + Piano), 2/2→4/4
                         # across pages, repeat m10↔m60 + voltas EXPANDED to 111 occurrences:
-                        # 1141 pitched notes, ~370 beats (~3:05 @ 120) — matches vexml's cursor
+                        # 1187 pitched notes (chorus vocal restored), ~370 beats (~3:05 @ 120)
+npm run verify:provenance # printed page → per-page mxl → merged → timeline conservation audit
+                        # (pitch multiset/notes/dynamics/meter); proved 675 written pitches == union,
+                        # and catches drops like the chorus-vocal fold loss
 npm run verify:tempo    # /?demo=tempo-seq.xml: per-measure tempo segments (metronome/sound marks,
                         # back-jump re-apply) fold to 20666.67 ms — EXACT parity with vexml's
                         # getDurationMs(); cursor locks to m2 inside the 60-QPM section mid-play
@@ -257,5 +260,22 @@ npm run inspect          # structural dump (measures, key signatures)
     beat-units (quarter→60, half→120), measure-level `<sound>`, and a repeat whose back-jump
     re-applies marks — `test:player` (unit) + `verify:tempo` (E2E, EXACT vexml duration parity)
     green; carmen/avalon byte-identical (no marks). `git` commit made; tree clean.
-4. ⏳ Multi-engine OMR voting (Clarity-OMR as second opinion) + concurrency safety.
-5. ⏳ Persistence (store uploads/exports) + **offline SoundFont packing** (currently CDN-streamed).
+4. ✅ **Provenance audit + chorus-vocal fold fix** — `scripts/verify-provenance.mjs`
+   (`npm run verify:provenance`) traces printed page → per-page mxl → merged score → player
+   timeline and asserts conservation (pitch multiset, note count, dynamics, meter sequence).
+   It CAUGHT a real bug: `merge-sheets.mjs` `NOTE_RE = /<note>[\s\S]*?<\/note>/g` only matched
+   bare `<note>` tags, but Audiveris emits attributed notes (`<note default-x=...>`), so the
+   extra-voice fold matched ZERO notes and **silently dropped the entire page-23 chorus vocal
+   line (26 pitches, the "A-va-lon" melody)** — playback had been piano-only through the chorus.
+   Fix: `NOTE_RE` → `<note\b[^>]*>...<\/note>` (+ same fix in the fold's p1Ticks calc; the fold
+   now also carries the extra part's `<direction>/<harmony>` elements, restoring its 4 dynamics).
+   Merged `scores/avalon.musicxml` regenerated: 675 written pitches (was 649), Voice P1 71→97
+   (chorus m28–40 restored), notes 811, dynamics 44 (all conserved). Playback counts updated in
+   `verify:avalon`: 1430 events / 1187 pitches (was 1378/1141), totalBeats 370.46, durationMs
+   185229 unchanged (voices simultaneous). Source book = `C:\Users\Wilbur\Pictures\0002-100BestSongsOfThe20sAnd30s.pdf`,
+   pages 21–24 (OCR-confirmed; page 25 starts "Ain't We Got Fun"); audio ground-truth reference:
+   https://www.youtube.com/watch?v=zmaKpp51uzI (Al Jolson – Avalon, 1920). All 9 suites green,
+   incl. `verify:avalon` E2E "playing 1187 notes". New scratch diag scripts:
+   `diag-page-alignment/compare-merges/legacy-utils/fold-trace/note-shapes/dyn-per-part.mjs`.
+5. ⏳ Multi-engine OMR voting (Clarity-OMR as second opinion) + concurrency safety.
+6. ⏳ Persistence (store uploads/exports) + **offline SoundFont packing** (currently CDN-streamed).
